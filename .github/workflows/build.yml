@@ -6,23 +6,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # 1) Seu zmk-config (com a pasta config/)
-      - name: Checkout user config
+      - name: Checkout user config (this repo)
         uses: actions/checkout@v3
         with:
           path: config
 
-      # 2) Código-fonte do ZMK
       - name: Checkout ZMK firmware
         uses: actions/checkout@v3
         with:
           repository: zmkfirmware/zmk
           path: zmk
 
-      # 3) West + dependências mínimas
-      - name: West setup
+      - name: Install deps + west
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip ninja-build gperf ccache dfu-util device-tree-compiler wget \
@@ -30,30 +26,30 @@ jobs:
           pip3 install west
           cd zmk
           west init -l app
+          # faz o west considerar seu manifest local (com o módulo do Forager)
+          cp "${{ github.workspace }}/config/west.yml" "${{ github.workspace }}/zmk/.west/"
           west update
           west zephyr-export
-          # Requisitos de scripts do Zephyr (ajuda a evitar erros de CMake/Python):
           pip3 install -r zephyr/scripts/requirements-base.txt
 
-      # 4) Build LEFT (central): note o -s app e o -d build-left
-      - name: Build left side
+      - name: Build LEFT (XIAO + Forager)
         run: |
           cd zmk
-          west build -s app -d build-left --pristine -b super_left -- \
-            -DSHIELD=forager_left \
+          west build -s app -d build-left --pristine -b seeeduino_xiao_ble -- \
+            -DSHIELD="forager_left rgbled_adapter" \
+            -DSNIPPET=studio-rpc-usb-uart \
             -DZMK_CONFIG="${{ github.workspace }}/config"
           cp build-left/zephyr/zmk.uf2 "${{ github.workspace }}/forager_left.uf2"
 
-      # 5) Build RIGHT (periférico): diretório separado
-      - name: Build right side
+      - name: Build RIGHT (XIAO + Forager)
         run: |
           cd zmk
-          west build -s app -d build-right --pristine -b super_right -- \
-            -DSHIELD=forager_right \
+          west build -s app -d build-right --pristine -b seeeduino_xiao_ble -- \
+            -DSHIELD="forager_right rgbled_adapter" \
+            -DSNIPPET=studio-rpc-usb-uart \
             -DZMK_CONFIG="${{ github.workspace }}/config"
           cp build-right/zephyr/zmk.uf2 "${{ github.workspace }}/forager_right.uf2"
 
-      # 6) Artefatos (v4)
       - name: Upload UF2 files
         uses: actions/upload-artifact@v4
         with:
